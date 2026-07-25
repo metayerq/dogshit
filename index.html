@@ -147,8 +147,10 @@
 //  Renseigne ces deux valeurs (Supabase → Project Settings →
 //  API) pour passer en mode partagé. Vides = mode local.
 // ════════════════════════════════════════════════════════════
-const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
+// La clé `anon` est publique par conception : c'est la RLS qui protège
+// les données, pas le secret de la clé. Ne jamais mettre `service_role` ici.
+const SUPABASE_URL = "https://nytdxotcdngqpmnfjhbw.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55dGR4b3RjZG5ncXBtbmZqaGJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwMDY2NzcsImV4cCI6MjEwMDU4MjY3N30.edpMldTp288wqauTrziGmOkUZ503Ax5YLx8Wlcoz-Zk";
 
 // ════════════════════════════════════════════════════════════
 //  FREGUESIAS — centroïdes approximatifs + demi-vie
@@ -282,6 +284,12 @@ const configured = SUPABASE_URL && SUPABASE_ANON_KEY;
 const store = configured ? SupabaseStore.init() : LocalStore;
 
 document.getElementById("mode").textContent = configured ? "MODE PARTAGÉ" : "MODE LOCAL — données sur cet appareil";
+if (configured) {
+  // Ni démo ni effacement sur la vraie base : on ne pollue pas des
+  // données réelles, et rien n'y est jamais supprimé.
+  document.getElementById("demo").hidden = true;
+  document.getElementById("reset").hidden = true;
+}
 document.getElementById("footNote").innerHTML = configured
   ? "Aucune donnée n'est jamais supprimée : les signalements se périment (poids décroissant), ils ne disparaissent pas.<br>Freguesia estimée par centroïde le plus proche : approximatif près des limites."
   : "Mode local : les données restent dans ce navigateur (localStorage). Renseigne SUPABASE_URL et SUPABASE_ANON_KEY en haut du script pour passer en carte partagée.<br>Freguesia estimée par centroïde le plus proche : approximatif près des limites.";

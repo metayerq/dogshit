@@ -10,19 +10,11 @@ python3 -m http.server 4173
 
 Puis ouvrir <http://localhost:4173>. Sans configuration, l'app tourne en **mode local** : les signalements restent dans le `localStorage` du navigateur.
 
-## Passer en carte partagée (Supabase)
+## Carte partagée (Supabase)
 
-1. Créer un projet sur [supabase.com](https://supabase.com) (le plan gratuit suffit largement pour démarrer).
-2. SQL Editor → coller et exécuter [`supabase/schema.sql`](supabase/schema.sql).
-3. Project Settings → API → copier l'URL du projet et la clé `anon`.
-4. Les renseigner en haut du `<script>` dans [`index.html`](index.html) :
+**Déjà en place.** Le projet `dogshit` (région West EU / Ireland) est provisionné, le schéma appliqué, et les clés sont renseignées en haut du `<script>` dans [`index.html`](index.html) — le bandeau affiche « MODE PARTAGÉ ».
 
-```js
-const SUPABASE_URL = "https://xxxx.supabase.co";
-const SUPABASE_ANON_KEY = "eyJ...";
-```
-
-Le bandeau passe de « MODE LOCAL » à « MODE PARTAGÉ ». Le reste du code est identique : les deux modes implémentent la même interface (`list` / `add` / `clean` / `confirm`).
+Pour repartir de zéro sur un autre projet : créer le projet sur [supabase.com](https://supabase.com), exécuter [`supabase/schema.sql`](supabase/schema.sql) dans le SQL Editor, puis remplacer `SUPABASE_URL` et `SUPABASE_ANON_KEY`. Le reste du code est identique : les deux modes implémentent la même interface (`list` / `add` / `clean` / `confirm`). Laisser les deux constantes vides fait retomber l'app en mode local.
 
 La clé `anon` est publique par conception — c'est la RLS qui protège les données. Le client anonyme peut **lire** ; il ne peut **écrire** que par les trois fonctions `security definer` (`create_report`, `mark_cleaned`, `confirm_still_there`), qui portent la validation bbox et l'anti-spam. Aucune policy `insert` / `update` / `delete` n'est accordée.
 
