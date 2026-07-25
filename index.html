@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Mapa do Cocó — Lisboa</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    --bg: #12100e; --panel: #1c1917; --panel-2: #262220; --line: #383029;
+    --text: #f0ebe5; --muted: #a29689; --accent: #b8763a; --green: #4f9d69;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  #map { position: absolute; inset: 0; z-index: 1; background: #12100e; }
+  .leaflet-container { background: #12100e; }
+
+  header {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 500;
+    padding: 12px 16px 24px;
+    background: linear-gradient(180deg, rgba(18,16,14,.92), rgba(18,16,14,0));
+    pointer-events: none;
+    transition: opacity .15s;
+  }
+  header.hidden { opacity: 0; }
+  h1 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+  h1 span { color: var(--accent); }
+  .sub { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+  #mode { display: inline-block; margin-top: 6px; font-size: 10px; letter-spacing: .04em;
+          padding: 3px 7px; border-radius: 5px; background: rgba(184,118,58,.15);
+          color: var(--accent); border: 1px solid rgba(184,118,58,.3); }
+
+  #sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 500;
+    background: var(--panel); border-top: 1px solid var(--line);
+    border-radius: 16px 16px 0 0;
+    padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
+    max-height: 66vh; overflow-y: auto;
+    box-shadow: 0 -8px 40px rgba(0,0,0,.5);
+  }
+  #grip { width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto 12px; }
+
+  .row { display: flex; gap: 8px; }
+  button {
+    font: inherit; font-weight: 600; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 11px; padding: 12px 14px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:active { transform: scale(.985); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1207; flex: 1; font-size: 15px; }
+  button.ghost { color: var(--muted); background: transparent; font-weight: 500; font-size: 13px; padding: 8px 10px; }
+  button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+  #status { font-size: 12.5px; color: var(--muted); min-height: 16px; margin: 10px 2px 0; }
+  #status.ok { color: var(--green); }
+  #status.err { color: #d4756b; }
+
+  /* Sélecteur de période */
+  #periods { display: flex; gap: 4px; margin-top: 14px; background: var(--panel-2);
+             border: 1px solid var(--line); border-radius: 11px; padding: 3px; }
+  #periods button { flex: 1; background: transparent; border: 0; border-radius: 8px;
+                    padding: 8px 4px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  #periods button[aria-pressed="true"] { background: var(--accent); color: #1a1207; }
+  #periodNote { font-size: 11px; color: #7a6d61; margin: 7px 2px 0; line-height: 1.45; }
+
+  .stats { display: flex; gap: 8px; margin-top: 12px; }
+  .stat { flex: 1; background: var(--panel-2); border: 1px solid var(--line); border-radius: 11px; padding: 9px 11px; }
+  .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 18px 0 8px; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  ol li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(56,48,41,.5); font-size: 14px; }
+  ol li:last-child { border-bottom: 0; }
+  .rank { width: 20px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .name { flex: 1; }
+  .bar { width: 64px; height: 5px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .cnt { width: 34px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+
+  .foot { margin-top: 16px; font-size: 11px; line-height: 1.5; color: #7a6d61; border-top: 1px solid var(--line); padding-top: 12px; }
+  .tools { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; }
+
+  .poop { text-align: center; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+
+  /* Popup */
+  .leaflet-popup-content-wrapper { background: var(--panel); color: var(--text); border-radius: 12px; border: 1px solid var(--line); }
+  .leaflet-popup-tip { background: var(--panel); }
+  .leaflet-popup-content { margin: 12px 14px; font-size: 13px; line-height: 1.5; }
+  .pop-meta { color: var(--muted); font-size: 11.5px; }
+  .pop-btns { display: flex; gap: 6px; margin-top: 10px; }
+  .pop-btns button { flex: 1; padding: 8px 6px; font-size: 12.5px; border-radius: 9px; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<header>
+  <h1>Mapa do <span>Cocó</span> · Lisboa</h1>
+  <p class="sub">Cartografia colaborativa. Sem fotos, sem nomes.</p>
+  <span id="mode">…</span>
+</header>
+
+<div id="sheet">
+  <div id="grip"></div>
+
+  <div class="row">
+    <button class="primary" id="here">📍 Signaler ici</button>
+    <button id="pin" aria-pressed="false" title="Placer sur la carte">🗺️</button>
+  </div>
+  <p id="status">Le bouton utilise ta position GPS. 🗺️ = placer un point à la main.</p>
+
+  <div id="periods">
+    <button data-period="now" aria-pressed="true">Maintenant</button>
+    <button data-period="30d" aria-pressed="false">30 jours</button>
+    <button data-period="6m"  aria-pressed="false">6 mois</button>
+  </div>
+  <p id="periodNote"></p>
+
+  <div class="stats">
+    <div class="stat"><b id="s-active">0</b><span>actifs</span></div>
+    <div class="stat"><b id="s-period">0</b><span>signalés</span></div>
+    <div class="stat"><b id="s-delay">—</b><span>délai médian</span></div>
+  </div>
+
+  <h2 id="boardTitle">Classement des freguesias</h2>
+  <ol id="board"><li style="color:var(--muted);font-size:13px">Aucun signalement pour l'instant.</li></ol>
+
+  <div class="tools">
+    <button class="ghost" id="demo">Charger des points de démo (fictifs)</button>
+    <button class="ghost" id="export">Exporter GeoJSON</button>
+    <button class="ghost" id="reset">Tout effacer</button>
+  </div>
+
+  <p class="foot" id="footNote"></p>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  CONFIGURATION
+//  Renseigne ces deux valeurs (Supabase → Project Settings →
+//  API) pour passer en mode partagé. Vides = mode local.
+// ════════════════════════════════════════════════════════════
+const SUPABASE_URL = "";
+const SUPABASE_ANON_KEY = "";
+
+// ════════════════════════════════════════════════════════════
+//  FREGUESIAS — centroïdes approximatifs + demi-vie
+//  La demi-vie reflète la fréquence réelle de nettoyage :
+//  un signalement en Baixa se périme plus vite qu'à Marvila.
+//  (miroir de la table freguesia_config côté serveur)
+// ════════════════════════════════════════════════════════════
+const FREGUESIAS = [
+  ["Santa Maria Maior", 38.7115, -9.1355, 24], ["Misericórdia", 38.7115, -9.1470, 24],
+  ["Santo António", 38.7215, -9.1450, 24],     ["Arroios", 38.7290, -9.1350, 36],
+  ["São Vicente", 38.7190, -9.1275, 36],       ["Penha de França", 38.7290, -9.1270, 48],
+  ["Estrela", 38.7130, -9.1620, 48],           ["Campo de Ourique", 38.7180, -9.1690, 48],
+  ["Avenidas Novas", 38.7375, -9.1470, 48],    ["Areeiro", 38.7415, -9.1330, 48],
+  ["Alvalade", 38.7520, -9.1440, 48],          ["Campolide", 38.7300, -9.1670, 48],
+  ["Alcântara", 38.7050, -9.1750, 48],         ["Ajuda", 38.7080, -9.1980, 72],
+  ["Belém", 38.6980, -9.2050, 72],             ["São Domingos de Benfica", 38.7400, -9.1830, 72],
+  ["Benfica", 38.7500, -9.2030, 72],           ["Carnide", 38.7620, -9.1900, 72],
+  ["Lumiar", 38.7720, -9.1620, 72],            ["Olivais", 38.7690, -9.1140, 72],
+  ["Parque das Nações", 38.7650, -9.0950, 72], ["Beato", 38.7330, -9.1090, 96],
+  ["Marvila", 38.7460, -9.1030, 96],           ["Santa Clara", 38.7830, -9.1330, 96],
+];
+const HALF_LIFE = Object.fromEntries(FREGUESIAS.map(f => [f[0], f[3]]));
+
+function freguesiaOf(lat, lng) {
+  let best = null, bestD = Infinity;
+  for (const [name, flat, flng] of FREGUESIAS) {
+    const dy = lat - flat, dx = (lng - flng) * 0.78; // correction longitude à 38.7°N
+    const d = dy * dy + dx * dx;
+    if (d < bestD) { bestD = d; best = name; }
+  }
+  return best;
+}
+
+const inLisbon = (lat, lng) => lat > 38.68 && lat < 38.81 && lng > -9.25 && lng < -9.08;
+
+// ════════════════════════════════════════════════════════════
+//  POIDS TEMPOREL — le cœur du modèle
+//  Rien ne disparaît, tout se périme. Décroissance par
+//  demi-vie ; un point nettoyé tombe à 0 mais reste en base.
+// ════════════════════════════════════════════════════════════
+function weightNow(r, now = Date.now()) {
+  if (r.status === "cleaned") return 0;
+  const hl = HALF_LIFE[r.freguesia] || 48;
+  return Math.pow(0.5, ((now - r.created_at) / 36e5) / hl);
+}
+
+// ════════════════════════════════════════════════════════════
+//  STOCKAGE — deux implémentations, une seule interface.
+//  Passer de l'un à l'autre ne change rien au reste du code.
+// ════════════════════════════════════════════════════════════
+const DEVICE = (() => {
+  let d = localStorage.getItem("coco-device");
+  if (!d) { d = crypto.randomUUID(); localStorage.setItem("coco-device", d); }
+  return d;
+})();
+
+const LocalStore = {
+  shared: false,
+  key: "mapa-coco-lx-v2",
+  _read() { try { return JSON.parse(localStorage.getItem(this.key)) || []; } catch (e) { return []; } },
+  _write(rows) { localStorage.setItem(this.key, JSON.stringify(rows)); },
+
+  async list() { return this._read(); },
+
+  async add(lat, lng) {
+    const rows = this._read();
+    // Mêmes garde-fous que le serveur : hors-zone et doublon rapproché.
+    if (!inLisbon(lat, lng)) throw new Error("Hors des limites de Lisbonne");
+    const dupe = rows.some(r => Date.now() - r.created_at < 6e5 &&
+      Math.abs(r.lat - lat) < 0.00014 && Math.abs(r.lng - lng) < 0.00018);
+    if (dupe) throw new Error("Déjà signalé ici il y a moins de 10 minutes");
+    rows.push({ id: crypto.randomUUID(), lat, lng, freguesia: freguesiaOf(lat, lng),
+                created_at: Date.now(), status: "open", cleaned_at: null, confirms: 0, is_demo: false });
+    this._write(rows);
+  },
+
+  async clean(id) {
+    const rows = this._read();
+    const r = rows.find(x => x.id === id);
+    if (r && r.status === "open") { r.status = "cleaned"; r.cleaned_at = Date.now(); }
+    this._write(rows);
+  },
+
+  // « Encore là » : remet le poids à fond ET compte la récidive.
+  async confirm(id) {
+    const rows = this._read();
+    const r = rows.find(x => x.id === id);
+    if (r) { r.created_at = Date.now(); r.status = "open"; r.cleaned_at = null; r.confirms++; }
+    this._write(rows);
+  },
+
+  async seedDemo(rows) { this._write(this._read().concat(rows)); },
+  async clear() { this._write([]); },
+};
+
+const SupabaseStore = {
+  shared: true,
+  db: null,
+  init() { this.db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); return this; },
+
+  async list() {
+    // 6 mois : au-delà, c'est de l'analyse hors-ligne (export), pas de la carte.
+    const since = new Date(Date.now() - 183 * 864e5).toISOString();
+    const { data, error } = await this.db
+      .from("reports").select("*").gte("created_at", since)
+      .order("created_at", { ascending: false }).limit(20000);
+    if (error) throw error;
+    return data.map(r => ({ ...r,
+      created_at: new Date(r.created_at).getTime(),
+      cleaned_at: r.cleaned_at ? new Date(r.cleaned_at).getTime() : null }));
+  },
+
+  async add(lat, lng) {
+    const { error } = await this.db.rpc("create_report", {
+      p_lat: lat, p_lng: lng, p_freguesia: freguesiaOf(lat, lng), p_device_hash: DEVICE });
+    if (error) throw new Error(error.message);
+  },
+  async clean(id) {
+    const { error } = await this.db.rpc("mark_cleaned", { p_report_id: id, p_device_hash: DEVICE });
+    if (error) throw new Error(error.message);
+  },
+  async confirm(id) {
+    const { error } = await this.db.rpc("confirm_still_there", { p_report_id: id, p_device_hash: DEVICE });
+    if (error) throw new Error(error.message);
+  },
+  async seedDemo() { throw new Error("Démo indisponible en mode partagé — on ne pollue pas la vraie base."); },
+  async clear() { throw new Error("Effacement impossible en mode partagé : rien n'est jamais supprimé."); },
+};
+
+const configured = SUPABASE_URL && SUPABASE_ANON_KEY;
+const store = configured ? SupabaseStore.init() : LocalStore;
+
+document.getElementById("mode").textContent = configured ? "MODE PARTAGÉ" : "MODE LOCAL — données sur cet appareil";
+document.getElementById("footNote").innerHTML = configured
+  ? "Aucune donnée n'est jamais supprimée : les signalements se périment (poids décroissant), ils ne disparaissent pas.<br>Freguesia estimée par centroïde le plus proche : approximatif près des limites."
+  : "Mode local : les données restent dans ce navigateur (localStorage). Renseigne SUPABASE_URL et SUPABASE_ANON_KEY en haut du script pour passer en carte partagée.<br>Freguesia estimée par centroïde le plus proche : approximatif près des limites.";
+
+// ════════════════════════════════════════════════════════════
+//  CARTE
+// ════════════════════════════════════════════════════════════
+const map = L.map("map", { zoomControl: false }).setView([38.7223, -9.1393], 13);
+L.control.zoom({ position: "topright" }).addTo(map);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 20,
+}).addTo(map);
+
+const heat = L.heatLayer([], {
+  radius: 26, blur: 20, minOpacity: 0.25, maxZoom: 16,
+  gradient: { 0.2: "#4a7c59", 0.45: "#c9a227", 0.7: "#c2703a", 1.0: "#8b3a2f" },
+}).addTo(map);
+
+const markers = L.layerGroup();
+map.on("zoomend", syncMarkerLayer);
+
+// L'en-tête est au-dessus du calque carte : on l'efface le temps
+// d'un popup pour ne pas le voir en transparence par-dessus.
+const headerEl = document.querySelector("header");
+map.on("popupopen", () => headerEl.classList.add("hidden"));
+map.on("popupclose", () => headerEl.classList.remove("hidden"));
+function syncMarkerLayer() {
+  if (map.getZoom() >= 16) { if (!map.hasLayer(markers)) markers.addTo(map); }
+  else if (map.hasLayer(markers)) map.removeLayer(markers);
+}
+
+// ════════════════════════════════════════════════════════════
+//  PÉRIODES
+//  « Maintenant » = couche live, avec décroissance.
+//  30 j / 6 mois  = couche chronique, SANS décroissance : les
+//  points nettoyés comptent aussi. C'est la mémoire longue, la
+//  carte qu'on montre à la mairie.
+// ════════════════════════════════════════════════════════════
+const PERIODS = {
+  now: { label: "Maintenant", note: "Ce qui est probablement encore là. Chaque signalement perd la moitié de son poids toutes les 24 à 96 h selon la freguesia (fréquence de nettoyage). Les points marqués nettoyés sont à zéro.", days: null },
+  "30d": { label: "30 jours", note: "Tous les signalements des 30 derniers jours, nettoyés compris, sans décroissance. Les récidives ressortent.", days: 30 },
+  "6m": { label: "6 mois", note: "Mémoire longue : les points noirs chroniques. Un endroit nettoyé chaque semaine et resali chaque semaine est un problème structurel, pas un incident.", days: 183 },
+};
+let period = "now";
+let rows = [];
+
+function intensity(r, now) {
+  if (period === "now") return weightNow(r, now);
+  return now - r.created_at <= PERIODS[period].days * 864e5 ? 1 : 0;
+}
+
+// ════════════════════════════════════════════════════════════
+//  RENDU
+// ════════════════════════════════════════════════════════════
+function render() {
+  const now = Date.now();
+  const scored = rows.map(r => ({ r, w: intensity(r, now) })).filter(x => x.w > 0.05);
+
+  heat.setLatLngs(scored.map(({ r, w }) => [r.lat, r.lng, w]));
+
+  markers.clearLayers();
+  for (const { r, w } of scored) {
+    const size = 12 + w * 10;
+    L.marker([r.lat, r.lng], {
+      icon: L.divIcon({ className: "",
+        html: `<div class="poop" style="font-size:${size}px;opacity:${(0.35 + w * 0.65).toFixed(2)}">💩</div>`,
+        iconSize: [22, 22] }),
+    }).bindPopup(popupHtml(r, w, now)).addTo(markers);
+  }
+  syncMarkerLayer();
+
+  // Statistiques
+  const activeSum = rows.reduce((s, r) => s + weightNow(r, now), 0);
+  const windowDays = PERIODS[period].days || 30;
+  const inWindow = rows.filter(r => now - r.created_at <= windowDays * 864e5);
+  const delays = rows.filter(r => r.cleaned_at).map(r => (r.cleaned_at - r.created_at) / 36e5).sort((a, b) => a - b);
+  const median = delays.length ? delays[Math.floor(delays.length / 2)] : null;
+
+  document.getElementById("s-active").textContent = Math.round(activeSum);
+  document.getElementById("s-period").textContent = inWindow.length;
+  document.getElementById("s-delay").textContent =
+    median === null ? "—" : median < 48 ? `${median.toFixed(0)} h` : `${(median / 24).toFixed(1)} j`;
+  document.querySelector("#s-period").nextElementSibling.textContent =
+    period === "now" ? "signalés 30 j" : `signalés ${PERIODS[period].label.toLowerCase()}`;
+
+  // Classement
+  const counts = {};
+  for (const { r, w } of scored) counts[r.freguesia] = (counts[r.freguesia] || 0) + w;
+  const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const board = document.getElementById("board");
+  document.getElementById("boardTitle").textContent =
+    period === "now" ? "Classement — actifs maintenant" : `Classement — ${PERIODS[period].label.toLowerCase()}`;
+  if (!ranked.length) {
+    board.innerHTML = '<li style="color:var(--muted);font-size:13px">Aucun signalement sur cette période.</li>';
+  } else {
+    const max = ranked[0][1];
+    board.innerHTML = ranked.map(([name, n], i) =>
+      `<li><span class="rank">${i + 1}</span><span class="name">${name}</span>` +
+      `<span class="bar"><i style="width:${Math.round(n / max * 100)}%"></i></span>` +
+      `<span class="cnt">${n < 10 ? n.toFixed(1) : Math.round(n)}</span></li>`).join("");
+  }
+
+  document.getElementById("periodNote").textContent = PERIODS[period].note;
+}
+
+function popupHtml(r, w, now) {
+  const ageH = (now - r.created_at) / 36e5;
+  const age = ageH < 1 ? "il y a quelques minutes"
+            : ageH < 48 ? `il y a ${Math.round(ageH)} h`
+            : `il y a ${Math.round(ageH / 24)} jours`;
+  const hl = HALF_LIFE[r.freguesia] || 48;
+  return `<b>${r.freguesia}</b><br>
+    <span class="pop-meta">Signalé ${age} · demi-vie ${hl} h<br>
+    Probabilité qu'il soit encore là : <b>${Math.round(weightNow(r, now) * 100)} %</b>
+    ${r.confirms ? `<br>⚠️ reconfirmé ${r.confirms} fois — point noir` : ""}
+    ${r.status === "cleaned" ? "<br>✅ marqué nettoyé" : ""}</span>
+    <div class="pop-btns">
+      <button onclick="act('${r.id}','clean')" ${r.status === "cleaned" ? "disabled" : ""}>✅ Nettoyé</button>
+      <button onclick="act('${r.id}','confirm')">🔁 Encore là</button>
+    </div>`;
+}
+
+window.act = async (id, kind) => {
+  try {
+    if (kind === "clean") { await store.clean(id); setStatus("Marqué nettoyé — merci. Le délai de nettoyage est enregistré.", "ok"); }
+    else { await store.confirm(id); setStatus("Confirmé — le point repasse au rouge et la récidive est comptée.", "ok"); }
+    map.closePopup();
+    await refresh();
+  } catch (e) { setStatus(e.message, "err"); }
+};
+
+// ════════════════════════════════════════════════════════════
+//  ACTIONS
+// ════════════════════════════════════════════════════════════
+function setStatus(msg, cls = "") { const el = document.getElementById("status"); el.textContent = msg; el.className = cls; }
+
+async function refresh() { rows = await store.list(); render(); }
+
+async function addPoint(lat, lng) {
+  try {
+    await store.add(lat, lng);
+    await refresh();
+    setStatus(`Signalé — ${freguesiaOf(lat, lng)}. Merci 🙏`, "ok");
+  } catch (e) { setStatus(e.message, "err"); }
+}
+
+document.getElementById("here").onclick = () => {
+  if (!navigator.geolocation) return setStatus("Géolocalisation indisponible. Utilise 🗺️.", "err");
+  setStatus("Localisation en cours…");
+  navigator.geolocation.getCurrentPosition(
+    pos => { const { latitude: la, longitude: lo } = pos.coords; map.setView([la, lo], 17); addPoint(la, lo); },
+    () => setStatus("Position refusée ou indisponible — utilise 🗺️ pour placer à la main.", "err"),
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+};
+
+const pinBtn = document.getElementById("pin");
+let pinMode = false;
+pinBtn.onclick = () => {
+  pinMode = !pinMode;
+  pinBtn.setAttribute("aria-pressed", String(pinMode));
+  setStatus(pinMode ? "Mode manuel : touche la carte à l'endroit exact." : "Mode manuel désactivé.");
+};
+map.on("click", e => {
+  if (!pinMode) return;
+  pinMode = false; pinBtn.setAttribute("aria-pressed", "false");
+  addPoint(e.latlng.lat, e.latlng.lng);
+});
+
+document.querySelectorAll("#periods button").forEach(b => {
+  b.onclick = () => {
+    period = b.dataset.period;
+    document.querySelectorAll("#periods button").forEach(x =>
+      x.setAttribute("aria-pressed", String(x === b)));
+    render();
+  };
+});
+
+// ════════════════════════════════════════════════════════════
+//  OUTILS
+// ════════════════════════════════════════════════════════════
+document.getElementById("demo").onclick = async () => {
+  // Données FICTIVES étalées sur 6 mois — sert uniquement à
+  // vérifier le rendu des trois périodes. Aucune valeur réelle.
+  const hubs = [[38.7115,-9.1355,3],[38.7145,-9.1470,3],[38.7290,-9.1330,2.5],[38.7190,-9.1290,2],
+                [38.7160,-9.1660,1.5],[38.7400,-9.1450,1.5],[38.7520,-9.1440,1],[38.7050,-9.1760,1]];
+  const tot = hubs.reduce((s, h) => s + h[2], 0);
+  const out = [];
+  for (let i = 0; i < 1200; i++) {
+    let r = Math.random() * tot, h;
+    for (h of hubs) { r -= h[2]; if (r <= 0) break; }
+    const g = () => (Math.random() + Math.random() + Math.random() - 1.5) * 0.008;
+    const lat = h[0] + g(), lng = h[1] + g() * 1.28;
+    if (!inLisbon(lat, lng)) continue;
+    // Répartition des âges biaisée vers le récent : une app qui
+    // tourne a beaucoup de signalements frais et une traîne
+    // historique. Sans ce biais, tout est éteint en mode « Maintenant ».
+    const ageMs = Math.pow(Math.random(), 2.2) * 183 * 864e5;
+    const ageDays = ageMs / 864e5;
+    const created = Date.now() - ageMs;
+    // Plus c'est vieux, plus c'est forcément nettoyé depuis.
+    const cleaned = Math.random() < (ageDays > 7 ? 0.92 : 0.3);
+    const delayH = 2 + Math.random() * 70;
+    out.push({ id: crypto.randomUUID(), lat, lng, freguesia: freguesiaOf(lat, lng),
+      created_at: created, status: cleaned ? "cleaned" : "open",
+      cleaned_at: cleaned ? Math.min(created + delayH * 36e5, Date.now()) : null,
+      confirms: Math.random() < 0.08 ? 1 + Math.floor(Math.random() * 3) : 0, is_demo: true });
+  }
+  try { await store.seedDemo(out); await refresh(); setStatus(`${out.length} points FICTIFS ajoutés sur 6 mois (démo visuelle).`); }
+  catch (e) { setStatus(e.message, "err"); }
+};
+
+document.getElementById("export").onclick = () => {
+  const now = Date.now();
+  const fc = { type: "FeatureCollection", features: rows.map(r => ({
+    type: "Feature", geometry: { type: "Point", coordinates: [r.lng, r.lat] },
+    properties: {
+      created_at: new Date(r.created_at).toISOString(),
+      cleaned_at: r.cleaned_at ? new Date(r.cleaned_at).toISOString() : null,
+      cleanup_delay_hours: r.cleaned_at ? +((r.cleaned_at - r.created_at) / 36e5).toFixed(1) : null,
+      freguesia: r.freguesia, status: r.status, confirms: r.confirms,
+      weight_now: +weightNow(r, now).toFixed(3), demo: !!r.is_demo,
+    } })) };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(fc, null, 2)], { type: "application/geo+json" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "mapa-coco-lisboa.geojson"; a.click();
+  URL.revokeObjectURL(url);
+};
+
+document.getElementById("reset").onclick = async () => {
+  if (!confirm("Effacer tous les signalements de ce navigateur ?")) return;
+  try { await store.clear(); await refresh(); setStatus("Données effacées."); }
+  catch (e) { setStatus(e.message, "err"); }
+};
+
+// Le poids bouge tout seul : on rafraîchit l'affichage chaque minute.
+setInterval(() => { if (period === "now") render(); }, 60000);
+
+refresh().catch(e => setStatus("Chargement impossible : " + e.message, "err"));
+</script>
+</body>
+</html>
